@@ -29,19 +29,19 @@ class Purge_Cloudflare
 	{
 		if (isset($_SERVER['HTTP_CF_CONNECTING_IP']))
 		{
-			add_action('wp_update_nav_menu', array('Purge_Cloudflare', 'purge_everything'), 10);
-			add_action('save_post', array('Purge_Cloudflare', 'save_post'), 10);
-			add_action('edit_term', array('Purge_Cloudflare', 'edit_term'), 10, 3);
-			add_filter('wp_headers', array('Purge_Cloudflare', 'headers'), 100);
-			add_action('wp_ajax_is_user_logged_in', array('Purge_Cloudflare', 'is_logged'));
-			add_action('wp_ajax_nopriv_is_user_logged_in', array('Purge_Cloudflare', 'is_logged'));
-			add_action('wp_enqueue_scripts',  array('Purge_Cloudflare', 'js'));
-			add_action('admin_enqueue_scripts',  array('Purge_Cloudflare', 'js'));
-			add_action('wp_head', array('Purge_Cloudflare', 'no_cache'), 1);
-			add_filter('image_editor_save_pre', array('Purge_Cloudflare', 'image'), 10, 3);
-			add_action('admin_menu', array('Purge_Cloudflare', 'add_menu'));
-			add_action('admin_init', array('Purge_Cloudflare', 'settings_page'));
-			add_action( 'admin_notices', array('Purge_Cloudflare', 'error_notice'));
+			add_action('wp_update_nav_menu', array(&$this, 'purge_everything'), 10);
+			add_action('save_post', array(&$this, 'save_post'), 10);
+			add_action('edit_term', array(&$this, 'edit_term'), 10, 3);
+			add_filter('wp_headers', array(&$this, 'headers'), 100);
+			add_action('wp_ajax_is_user_logged_in', array(&$this, 'is_logged'));
+			add_action('wp_ajax_nopriv_is_user_logged_in', array(&$this, 'is_logged'));
+			add_action('wp_enqueue_scripts',  array(&$this, 'js'));
+			add_action('admin_enqueue_scripts',  array(&$this, 'js'));
+			add_action('wp_head', array(&$this, 'no_cache'), 1);
+			add_filter('image_editor_save_pre', array(&$this, 'image'), 10, 3);
+			add_action('admin_menu', array(&$this, 'add_menu'));
+			add_action('admin_init', array(&$this, 'settings_page'));
+			add_action('admin_notices', array(&$this, 'error_notice'));
 		}
 	}
 	
@@ -76,6 +76,13 @@ class Purge_Cloudflare
 						$message = 'Invalid Key or Global API Key';
 						printf('<div class="%1$s"><p>%2$s</p></div>', esc_attr($class), esc_html($message)); 
 					}
+					else
+					{
+						if(get_option('cfp_debug') == 0)
+						{
+							file_put_contents(plugin_dir_path( __FILE__ ).'debug.log', '');	
+						}
+					}
 				}
 			}
 		}
@@ -107,8 +114,6 @@ class Purge_Cloudflare
 	
 	public static function settings_page()
 	{
-		register_setting('cfp_settings', 'cfp_email', 'sanitize_email');
-		register_setting('cfp_settings', 'cfp_key', 'sanitize_key');
 		
 		add_settings_section(
 			'cloudflare_purge_section', 
@@ -116,37 +121,67 @@ class Purge_Cloudflare
 			'', 
 			'cfp_settings'
 		);
+		
+		register_setting('cfp_settings', 'cfp_email', 'sanitize_email');
+		register_setting('cfp_settings', 'cfp_key', 'sanitize_key');
+		register_setting('cfp_settings', 'cfp_debug', 'sanitize_key');
 
 		add_settings_field( 
 			'cfp_email', 
-			esc_html('Email'), 
-			array('Purge_Cloudflare', 'input'), 
+			'Email', 
+			array(&$this, 'input'), 
 			'cfp_settings', 
 			'cloudflare_purge_section', 
-			'email' 
+			array('email') 
 		);	
 		
 		add_settings_field( 
 			'cfp_key', 
-			esc_html('Global API Key'), 
-			array('Purge_Cloudflare', 'input'), 
+			'Global API Key', 
+			array(&$this, 'input'), 
 			'cfp_settings', 
 			'cloudflare_purge_section',
-			'key'
-		);	
+			array('key')
+		);
+		
+		add_settings_field( 
+			'cfp_debug', 
+			'Debuggin', 
+			array(&$this, 'select'), 
+			'cfp_settings', 
+			'cloudflare_purge_section',
+			array('debug', esc_url(plugins_url('debug.log', __FILE__)))
+		);
 		
 	}
 	
-	public static function input($name)
+	public static function input($arr)
 	{
-		$name = 'cfp_'.$name;
+		$name = 'cfp_'.$arr[0];
 		$value = get_option($name);
-		
+		$description = (isset($arr[1])) ? $arr[1] : null;
 		?>
-		
-		<input name="<?php echo esc_html($name); ?>" id="<?php echo esc_html($name); ?>" value="<?php echo esc_html($value); ?>" />
-		
+			<input name="<?php echo esc_html($name); ?>" id="<?php echo esc_html($name); ?>" value="<?php echo esc_html($value); ?>" />
+			<?php if($description != null) : ?>
+				<p class="description"><?php echo esc_html($description); ?></p>
+			<?php endif; ?>		
 		<?php
+	}
+	public static function select($arr)
+	{
+		$name = 'cfp_'.$arr[0];
+		$value = get_option($name);
+		$description = (isset($arr[1])) ? $arr[1] : null;
+
+		?>
+			<select name="<?php echo esc_html($name); ?>" id="<?php echo esc_html($name); ?>">
+				<option value="0" <?php selected($value, "0"); ?> >No</option>
+				<option value="1" <?php selected($value, "1"); ?> >Yes</option>
+			</select> 
+			<?php if($description != null) : ?>
+				<p class="description"><?php echo esc_html($description); ?></p>
+			<?php endif; ?>
+		<?php		
 	}
 	
 	public static function add_menu()
@@ -156,7 +191,7 @@ class Purge_Cloudflare
             'Purge Cloudflare',
             'manage_options',
             'purge-cloudflare',
-            array('Purge_Cloudflare', 'html_settings')
+            array(&$this, 'html_settings')
         );
 	}
 	
@@ -527,9 +562,12 @@ class Purge_Cloudflare
 	}	
 	public static function debug($log)
 	{
-		$output = "[".strval(self::date('Y-m-d H:i:s'))."] = ".esc_html(sanitize_text_field($_SERVER['REQUEST_URI']))."\n";
-		$output .= $log."\n\n";
-		file_put_contents(plugin_dir_path( __FILE__ ).'debug.log', $output, FILE_APPEND | LOCK_EX);
+		if(get_option('cfp_debug') == 1)
+		{
+			$output = "[".strval(self::date('Y-m-d H:i:s'))."] = ".esc_html(sanitize_text_field($_SERVER['REQUEST_URI']))."\n";
+			$output .= $log."\n\n";
+			file_put_contents(plugin_dir_path( __FILE__ ).'debug.log', $output, FILE_APPEND | LOCK_EX);			
+		}
 	}
 	
 	public static function js()

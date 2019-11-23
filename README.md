@@ -10,9 +10,11 @@
 
 - Vistors will never see the admin bar.
 
-## Configuration
+## Easy Configuration
 
-- 
+![menu](/assets/menu.png)
+
+![settings](/assets/settings.png)
 
 ## Usage
 
