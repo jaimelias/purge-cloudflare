@@ -146,11 +146,11 @@ class Purge_Cloudflare
 		
 		add_settings_field( 
 			'cfp_debug', 
-			'Debuggin', 
+			'Debug', 
 			array(&$this, 'select'), 
 			'cfp_settings', 
 			'cloudflare_purge_section',
-			array('debug', esc_url(plugins_url('debug.log', __FILE__)))
+			array('debug', '<a href="'.esc_url(plugins_url('debug.log', __FILE__)).'">Debug File</a>')
 		);
 		
 	}
@@ -161,10 +161,13 @@ class Purge_Cloudflare
 		$value = get_option($name);
 		$description = (isset($arr[1])) ? $arr[1] : null;
 		?>
-			<input name="<?php echo esc_html($name); ?>" id="<?php echo esc_html($name); ?>" value="<?php echo esc_html($value); ?>" />
 			<?php if($description != null) : ?>
-				<p class="description"><?php echo esc_html($description); ?></p>
-			<?php endif; ?>		
+				<label class="description">
+			<?php endif; ?>				
+			<input name="<?php echo esc_html($name); ?>" id="<?php echo esc_html($name); ?>" value="<?php echo esc_html($value); ?>" /> 
+			<?php if($description != null) : ?>
+				<?php echo $description; ?></label>
+			<?php endif; ?>
 		<?php
 	}
 	public static function select($arr)
@@ -174,12 +177,15 @@ class Purge_Cloudflare
 		$description = (isset($arr[1])) ? $arr[1] : null;
 
 		?>
+			<?php if($description != null) : ?>
+				<label class="description">
+			<?php endif; ?>		
 			<select name="<?php echo esc_html($name); ?>" id="<?php echo esc_html($name); ?>">
 				<option value="0" <?php selected($value, "0"); ?> >No</option>
 				<option value="1" <?php selected($value, "1"); ?> >Yes</option>
 			</select> 
 			<?php if($description != null) : ?>
-				<p class="description"><?php echo esc_html($description); ?></p>
+				<?php echo $description; ?></label>
 			<?php endif; ?>
 		<?php		
 	}

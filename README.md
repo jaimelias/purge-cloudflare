@@ -8,7 +8,7 @@
 
 - Each time you edit the navigation menu or a widget ALL your pages are flushed in Cloudflare.
 
-- Vistors will never see the admin bar.
+- Visitors will never see the admin bar.
 
 ## Easy Configuration
 
@@ -18,7 +18,7 @@
 
 ## Usage
 
-After initial setup there are no addininal actions you'll need to do.
+After initial setup there are no additional actions you'll need to do.
 
 ## Developers
 
