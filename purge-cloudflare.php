@@ -29,22 +29,65 @@ class Purge_Cloudflare
 	{
 		if (isset($_SERVER['HTTP_CF_CONNECTING_IP']))
 		{
-			add_action('wp_update_nav_menu', array(&$this, 'purge_everything'), 10);
-			add_action('save_post', array(&$this, 'save_post'), 10);
-			add_action('edit_term', array(&$this, 'edit_term'), 10, 3);
-			add_filter('wp_headers', array(&$this, 'headers'), 100);
-			add_action('wp_ajax_is_user_logged_in', array(&$this, 'is_logged'));
-			add_action('wp_ajax_nopriv_is_user_logged_in', array(&$this, 'is_logged'));
+			add_action('customize_save', array(&$this, 'purge_everything'), PHP_INT_MAX);
+			add_action('wp_update_nav_menu', array(&$this, 'purge_everything'), PHP_INT_MAX);
+			add_filter('wp_headers', array(&$this, 'headers'), PHP_INT_MAX);
+			add_action('wp_ajax_is_user_logged_in', array(&$this, 'is_logged'), PHP_INT_MAX);
+			add_action('wp_ajax_nopriv_is_user_logged_in', array(&$this, 'is_logged'), PHP_INT_MAX);
 			add_action('wp_enqueue_scripts',  array(&$this, 'js'));
 			add_action('admin_enqueue_scripts',  array(&$this, 'js'));
 			add_action('wp_head', array(&$this, 'no_cache'), 1);
-			add_filter('image_editor_save_pre', array(&$this, 'image'), 10, 3);
+			add_filter('image_editor_save_pre', array(&$this, 'image'), PHP_INT_MAX, 3);
 			add_action('admin_menu', array(&$this, 'add_menu'));
 			add_action('admin_init', array(&$this, 'settings_page'));
 			add_action('admin_notices', array(&$this, 'error_notice'));
+			add_action('update_option', array(&$this, 'update_options'), PHP_INT_MAX, 3);
+			
+			$post_actions = array('save_post', 'edit_post', 'delete_attachment', 'deleted_post');
+			
+			foreach($post_actions as $action)
+			{
+				add_action($action, array(&$this, 'save_post'), PHP_INT_MAX);
+			}
+			
+			$term_actions = array('create_term', 'edit_term', 'delete_term');
+			
+			foreach($term_actions as $action)
+			{
+				$args = 3;
+				$callback = $action;
+				
+				if($action == 'delete_term')
+				{
+					$args = 5;
+				}
+				else if($action == 'create_term')
+				{
+					$callback = 'edit_term';
+				}
+				
+				add_action($action, array(&$this, $action), PHP_INT_MAX, $args);
+			}
 		}
 	}
-	
+	public static function update_options($name, $old, $new)
+	{
+		$options = array('cfp_email', 'cfp_key', 'cfp_debug');
+		
+		if(in_array($name, $options))
+		{
+			$user = wp_get_current_user();
+			$roles = array('administrator');		
+			
+			if(!array_intersect($roles, $user->roles))
+			{	
+				wp_die('You are not authorized to edit this setting.');
+				$new = $old;
+			}			
+		}
+		
+		return $new;
+	}
 	public static function error_notice()
 	{
 		if(isset($_GET['page']))
@@ -203,19 +246,30 @@ class Purge_Cloudflare
 	
 	public static function html_settings()
 	{
-		?>
-		<div class="wrap">
-		<form action='options.php' method='post'>
+		$user = wp_get_current_user();
+		$roles = array('administrator');		
 			
-			<h1><?php esc_html('Purge Cloudflare'); ?></h1>	
+		if(array_intersect($roles, $user->roles)){	
+			?>
+				<div class="wrap">
+				<form action='options.php' method='post'>
+					
+					<h1>Purge Cloudflare</h1>	
+					<?php
+					settings_fields( 'cfp_settings' );
+					do_settings_sections( 'cfp_settings' );
+					submit_button();
+					?>			
+				</form>
+			
 			<?php
-			settings_fields( 'cfp_settings' );
-			do_settings_sections( 'cfp_settings' );
-			submit_button();
-			?>			
-		</form>
-		
-		<?php
+		}
+		else
+		{
+			?>
+			<div class="wrap"><h1>You are not authorized to enter this page.</h1></div>
+			<?php
+		}
 	}
 	
 	public static function no_cache()
@@ -224,13 +278,13 @@ class Purge_Cloudflare
 		?>
 		<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 		<meta http-equiv="Pragma" content="no-cache" />
-		<meta http-equiv="Expires" content="0" />		
+		<meta http-equiv="Expires" content="0" />
 		<?php
 		endif;
 	}
 	public static function headers($headers)
 	{
-		if(!is_admin() && is_user_logged_in() && is_main_query() && !is_feed())
+		if(!is_admin() && is_main_query() && !is_feed() && is_user_logged_in())
 		{
 			$headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0';
 			$headers['Pragma'] = 'no-cache';
@@ -245,9 +299,98 @@ class Purge_Cloudflare
 		$output['key'] = get_option('cfp_key');
 		return $output;
 	}
+	public static function delete_term($term_id, $tt_id, $taxonomy, $deleted_term, $object_ids)
+	{
+		global $wp_rewrite;
+		global $wp_taxonomies;
+		$term = $deleted_term;
+		$termlink = $wp_rewrite->get_extra_permastruct($taxonomy);
+		$termlink = apply_filters( 'pre_term_link', $termlink, $term);
+		$slug = $term->slug;
+		$t = get_taxonomy($taxonomy);
+		
+		if($t->public === false)
+		{
+			return;
+		}
+		
+		if(!empty($termlink))
+		{
+			if($t->rewrite['hierarchical'] ) {
+				$hierarchical_slugs = array();
+				$ancestors = get_ancestors( $term->term_id, $taxonomy, 'taxonomy' );
+				foreach ( (array) $ancestors as $ancestor ) {
+					$ancestor_term        = get_term( $ancestor, $taxonomy );
+					$hierarchical_slugs[] = $ancestor_term->slug;
+				}
+				$hierarchical_slugs = array_reverse( $hierarchical_slugs );
+				$hierarchical_slugs[] = $slug;
+				$termlink = str_replace( "%$taxonomy%", implode( '/', $hierarchical_slugs ), $termlink );
+			} else {
+				$termlink = str_replace( "%$taxonomy%", $slug, $termlink);
+			}
+			$termlink = home_url( user_trailingslashit( $termlink, 'category'));
+		}
+	   
+		if ('post_tag' === $taxonomy) {
+	 
+			$termlink = apply_filters( 'tag_link', $termlink, $term->term_id );
+		} elseif ( 'category' === $taxonomy ) {
+	 
+			$termlink = apply_filters( 'category_link', $termlink, $term->term_id );
+		}		
+		
+		if(wp_http_validate_url($termlink))
+		{
+			$urls = array($termlink);
+			
+			if(is_array($object_ids))
+			{
+				if(count($object_ids) > 0)
+				{
+					$post_type = $wp_taxonomies[$taxonomy]->object_type;
+					$args = array();
+					$args['post_type'] = $post_type;
+					$args['posts_per_page'] = 200;
+					$args['status'] = 'publish';
+					$args['tax_query'] = array();					
+					$args['post__in'] = $object_ids;
+					$term_posts = get_posts($args);
+					
+					if(is_array($term_posts))
+					{
+						if(count($term_posts) > 0)
+						{
+							foreach($term_posts as $post)
+							{
+								$term_url = get_the_permalink($post->ID);
+								
+								if(wp_http_validate_url($term_url))
+								{
+									array_push($urls, $term_url);
+								}
+							}	
+						}
+					}					
+				}
+			}
+
+			self::purge($urls);
+		}
+	}
 	public static function edit_term($term_id, $tt_id, $taxonomy)
 	{
-		if(!current_user_can( 'edit_posts' )) return;
+		$user = wp_get_current_user();
+		$roles = array('editor', 'administrator', 'author');
+		
+		$t = get_taxonomy($taxonomy);
+		
+		if($t->public === false)
+		{
+			return;
+		}		
+		
+		if(!array_intersect($roles, $user->roles)) return;
 		
 		global $wp_taxonomies;
 		
@@ -255,6 +398,7 @@ class Purge_Cloudflare
 		
 		if(isset($term_id) && isset($wp_taxonomies) && !in_array($taxonomy, $excluded_tax))
 		{
+
 			$queried_object = get_queried_object();
 			$urls = array(get_term_link($term_id));
 			$post_type = $wp_taxonomies[$taxonomy]->object_type;
@@ -275,9 +419,20 @@ class Purge_Cloudflare
 			
 			$term_posts = get_posts($args);
 			
-			foreach($term_posts as $post)
+			if(is_array($term_posts))
 			{
-				array_push($urls, get_the_permalink($post->ID));
+				if(count($term_posts) > 0)
+				{
+					foreach($term_posts as $post)
+					{
+						$term_url = get_the_permalink($post->ID);
+						
+						if(wp_http_validate_url($term_url))
+						{
+							array_push($urls, $term_url);
+						}
+					}	
+				}
 			}
 			
 			self::purge($urls);
@@ -286,8 +441,11 @@ class Purge_Cloudflare
 	}
 	public static function save_post($post_id)
 	{
+		$user = wp_get_current_user();
+		$roles = array('editor', 'administrator', 'author');
+		
 		if(defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) return;
-		if(! current_user_can( 'edit_post', $post_id ) ) return;
+		if(!array_intersect($roles, $user->roles)) return;
 		//prevents to purge revisions during save_post
 		if(wp_is_post_revision( $post_id )) return;
 		//prevents duplicates
@@ -301,10 +459,15 @@ class Purge_Cloudflare
 				return;
 			}
 		}
+		if(isset($_GET['lang'])) 
+		{
+			return;
+		}		
 		
 		if(isset($post_id))
 		{
-			self::purge(get_the_permalink($post_id));
+			$urls = preg_replace('/\_\_trashed/i', '', get_the_permalink($post_id));
+			self::purge($urls);
 			$GLOBALS['Purge_Cloudflare_O'] = true;
 		}
 	}
@@ -595,14 +758,28 @@ class Purge_Cloudflare
 	{
 		$output = array();
 		
+		if(!is_user_logged_in())
+		{
+			return;
+		}
+		
+		$user = wp_get_current_user();
+		$roles = array('editor', 'administrator', 'author');
+		
+		if(!array_intersect($roles, $user->roles))
+		{
+			return;
+		}
+		
 		$domain = substr(base64_encode($_SERVER['SERVER_NAME']), 0, 10);
 		$token_name = 'p_cf_u_'. $domain;
 		
 		if(isset($_POST[$token_name]) && isset($_POST['url']))
 		{
 			$url = sanitize_text_field($_POST['url']);
+
 			
-			if(is_user_logged_in() && current_user_can('edit_posts') && wp_http_validate_url($url))
+			if(wp_http_validate_url($url))
 			{
 				$output['is_logged'] = true;
 				$output['nonce_verified'] = false;
@@ -629,6 +806,10 @@ class Purge_Cloudflare
 					$output['c_p_nonce_new'] = wp_create_nonce('c_p_nonce');
 				}
 			}			
+		}
+		if(isset($_POST['customize_theme']))
+		{
+			self::purge_everything();
 		}
 
 		wp_send_json($output);

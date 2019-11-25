@@ -28,7 +28,7 @@ $(function(){
 					
 					$.post(p_cf_ajaxUrl, p_cf_data, function(data_2){
 						
-						if(data_2.is_logged === true && data_2.nonce_verified === false)
+						if(data_2.is_logged === true && data_2.nonce_verified === true)
 						{
 							console.log(data_2);
 						}
@@ -65,11 +65,11 @@ function p_cf_isPublic()
 {
 	var output = false;
 	
-	if(!$('body').hasClass('wp-admin'))
+	if(!$('body').hasClass('wp-admin') && !$('body').hasClass('wp-customizer'))
 	{
 		output = true;
 	}
-	
+
 	return output;
 }
 
