@@ -66,7 +66,7 @@ class Purge_Cloudflare
 					$callback = 'edit_term';
 				}
 				
-				add_action($action, array(&$this, $action), PHP_INT_MAX, $args);
+				add_action($action, array(&$this, $callback), PHP_INT_MAX, $args);
 			}
 		}
 	}
@@ -733,9 +733,21 @@ class Purge_Cloudflare
 	{
 		if(get_option('cfp_debug') == 1)
 		{
+			$file = plugin_dir_path( __FILE__ ).'debug.log';
 			$output = "[".strval(self::date('Y-m-d H:i:s'))."] = ".esc_html(sanitize_text_field($_SERVER['REQUEST_URI']))."\n";
 			$output .= $log."\n\n";
-			file_put_contents(plugin_dir_path( __FILE__ ).'debug.log', $output, FILE_APPEND | LOCK_EX);			
+			
+			if(file_exists($file))
+			{
+				file_put_contents($file, $output, FILE_APPEND | LOCK_EX);
+			}
+			else
+			{
+				$new_file = fopen($file, 'w');
+				fwrite($new_file, $output);
+				fclose($new_file);
+			}
+						
 		}
 	}
 	
