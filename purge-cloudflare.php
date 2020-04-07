@@ -789,7 +789,6 @@ class Purge_Cloudflare
 		if(isset($_POST[$token_name]) && isset($_POST['url']))
 		{
 			$url = sanitize_text_field($_POST['url']);
-
 			
 			if(wp_http_validate_url($url))
 			{
@@ -799,7 +798,6 @@ class Purge_Cloudflare
 				
 				if(wp_verify_nonce(sanitize_text_field($_POST[$token_name]), 'c_p_nonce'))
 				{
-					$url = esc_url($url);
 					$hostname = parse_url($url);
 					$hostname = $hostname['host'];
 					
